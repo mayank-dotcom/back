@@ -107,8 +107,9 @@ app.post("/create-record", async (req, res) => {
   }
 });
 // Protected routes - Regular users
-app.post("/attendance",  async (req, res) => {
-  const { username, action } = req.body;
+// Update the clock out endpoint to include report
+app.post("/attendance", async (req, res) => {
+  const { username, action, report } = req.body;  // Add report to destructuring
 
   const currentDate = new Date();
   const day = currentDate.toLocaleString("en-US", { weekday: "long" });
@@ -121,6 +122,7 @@ app.post("/attendance",  async (req, res) => {
         date: currentDate,
         day: day,
         IN: time,
+        report: "" // Initialize empty report
       };
 
       const attendanceRecord = new Interns(attendanceData);
@@ -131,7 +133,10 @@ app.post("/attendance",  async (req, res) => {
     } else if (action === "clockOut") {
       const attendanceRecord = await Interns.findOneAndUpdate(
         { name: username },
-        { OUT: time },
+        { 
+          OUT: time,
+          report: report || "No report submitted" // Add report during clock out
+        },
         { sort: { _id: -1 }, new: true }
       );
 
@@ -149,6 +154,83 @@ app.post("/attendance",  async (req, res) => {
   }
 });
 
+// Update the update endpoint to include report
+app.put("/attendance/update", async (req, res) => {
+  const { id, clockIn, clockOut, date, report } = req.body;
+
+  try {
+    const updates = {};
+    if (clockIn) updates.IN = clockIn;
+    if (clockOut) updates.OUT = clockOut;
+    if (date) updates.date = date;
+    if (report) updates.report = report;
+
+    const updatedRecord = await Interns.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true }
+    );
+
+    if (!updatedRecord) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+
+    res.status(200).json({ message: "Record updated successfully", data: updatedRecord });
+  } catch (err) {
+    console.error("Update error:", err);
+    res.status(500).json({ message: "Error updating record" });
+  }
+});
+
+
+// Update the new attendance endpoint to include report
+app.post("/attendance/new", async (req, res) => {
+  const { username, date, clockIn, clockOut, report } = req.body;  // Add report to destructuring
+
+  // Validate input
+  if (!username || !date || !clockIn || !clockOut) {
+    return res.status(400).json({ 
+      message: "All fields are required", 
+      receivedData: req.body 
+    });
+  }
+
+  try {
+    // Parse the date string in mm-dd-yyyy format
+    const [month, day, year] = date.split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+
+    const newAttendance = new Interns({
+      name: username,
+      date: parsedDate,
+      day: parsedDate.toLocaleString("en-US", { weekday: "long" }),
+      IN: clockIn,
+      OUT: clockOut,
+      report: report || "No report submitted"  // Add report with default value
+    });
+
+    // Validate the model before saving
+    const validationError = newAttendance.validateSync();
+    if (validationError) {
+      return res.status(400).json({ 
+        message: "Validation failed", 
+        errors: validationError.errors 
+      });
+    }
+
+    await newAttendance.save();
+    res.status(201).json({ 
+      message: "New attendance record added successfully", 
+      data: newAttendance 
+    });
+  } catch (error) {
+    console.error("Error adding new attendance record:", error);
+    res.status(500).json({ 
+      message: "Failed to add new attendance record", 
+      error: error.message 
+    });
+  }
+});
 app.get("/attendance",  async (req, res) => {
   const { username } = req.query;
 
@@ -171,6 +253,9 @@ app.get("/getattendance", verifyAdmin, async (req, res) => {
     res.status(500).json({ message: "Error fetching attendance records", error });
   }
 });
+app.get("/",async (req, res) => {
+  res.send("Hello World");
+})
 
 // Start server
 app.listen(PORT, () => {

@@ -24,6 +24,10 @@ const InternSchema = new Schema({
     required: true,
     enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], // Restrict to valid days
   },
+  report:{
+    type: String,
+    default: "No report yet" 
+  }
 });
 
 module.exports = { InternSchema };

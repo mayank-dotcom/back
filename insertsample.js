@@ -1,6 +1,6 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Record= require("./models/Record"); // Adjust the path if needed
+const Intern= require("./models/Interns"); // Adjust the path if needed
 
 // MongoDB connection
 const { MONGO_URL } = process.env;
@@ -15,17 +15,19 @@ mongoose
 
 // Sample data
 const sampleData = [
-  
   {
-    email: "mayank11d@gmail.com",
-    username: "Smithson",
-    password:"224fff6",
-  },
+    name: "mayank",
+    IN: "02:02",    // Time should be a string
+    OUT: "03:03",   // Time should be a string
+    date: "12-24-2024", // Date should be a proper date string
+    day: "Tuesday",
+    report: "done"
+  }
 ];
 
 // Insert sample data
 
-Record.insertMany(sampleData)
+Intern.insertMany(sampleData)
   .then(() => {
     console.log("Sample data inserted successfully");
     mongoose.connection.close(); // Close connection after insertion
