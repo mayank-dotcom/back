@@ -1,16 +1,29 @@
-// server.js
 const express = require("express");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const RecordModel = require("./models/Record");
-const Interns = require("./models/Interns");
+const InternModel = require("./models/Interns");
 const cors = require("cors");
 const app = express();
 const { verifyAdmin } = require("./authmiddleware");
 require("dotenv").config();
 const PORT = 8000;
 const { MONGO_URL } = process.env;
+
+// Middleware for token verification
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token provided" });
+
+  try {
+    const decoded = jwt.verify(token, "secretKey");
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: "Invalid token" });
+  }
+};
 
 // Middleware configurations
 app.use(express.json());
@@ -29,10 +42,11 @@ mongoose
 app.get("/", async (req, res) => {
   res.send("Hello World");
 });
-app.delete("/delete-record/:id", async (req, res) => {
+
+app.delete("/delete-record/:id", verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
-    const deletedRecord = await Interns.findByIdAndDelete(id); // Assuming you're using Mongoose
+    const deletedRecord = await InternModel.findByIdAndDelete(id);
     if (!deletedRecord) {
       return res.status(404).json({ message: "Record not found" });
     }
@@ -46,111 +60,177 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await RecordModel.findOne({ email });
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check for admin credentials first
     if (email === "pankajxerox@gmail.com" && password === "k26534gg") {
-      const token = jwt.sign({ id: user._id, email: email , isAdmin: true}, "secretKey", { expiresIn: "1h" });
-      return res.json({ token, username: user.username,verifyAdmin, redirect: "/Admin" });
+      const token = jwt.sign(
+        { id: user._id, email, username: user.username, isAdmin: true },
+        "secretKey",
+        { expiresIn: "1h" }
+      );
+      return res.json({ token, username: user.username, verifyAdmin, redirect: "/Admin" });
     }
 
-    // Check for regular user credentials
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id, email: email }, "secretKey", { expiresIn: "1h" });
-    return res.json({ token, username: user.username,  redirect: "/MAINAttendance" });
+    const token = jwt.sign(
+      { id: user._id, email, username: user.username, isAdmin: false },
+      "secretKey",
+      { expiresIn: "1h" }
+    );
+    return res.json({ token, username: user.username, redirect: "/MAINAttendance" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
+
 app.post("/create-record", async (req, res) => {
   const { email, username, password } = req.body;
 
   try {
-    // Log the incoming request body for debugging
     console.log("Request body:", req.body);
-
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create a new record
     const newRecord = new RecordModel({
       email,
       username,
       password: hashedPassword,
     });
 
-    // Save the record to the database
     await newRecord.save();
     res.status(201).json({ message: "Record created successfully", data: newRecord });
   } catch (err) {
     console.error("Error creating record:", err);
 
-    // Handle validation errors
     if (err.name === 'ValidationError') {
       return res.status(400).json({ message: "Validation error", errors: err.errors });
     }
 
-    // Handle duplicate key error
-    if (err.code === 11000) { // Duplicate key error
+    if (err.code === 11000) {
       return res.status(409).json({ message: "Email already exists" });
     }
 
-    // General server error
     res.status(500).json({ message: "Error creating record", error: err.message });
   }
 });
-// Protected routes - Regular users
-// Update the clock out endpoint to include report
-app.get("/attendance", async (req, res) => {
-  const { username } = req.query;
+
+// Protected routes with authentication
+app.get("/attendance", verifyToken, async (req, res) => {
   try {
-    const attendanceData = await Interns.find({ name: username }).sort({ date: -1 });
+    if (!req.user.isAdmin) {
+      const attendanceData = await InternModel.find({ name: req.user.username }).sort({ date: -1 });
+      return res.status(200).json(attendanceData);
+    }
+    
+    const attendanceData = await InternModel.find({}).sort({ date: -1 });
     res.status(200).json(attendanceData);
   } catch (err) {
     res.status(500).json({ message: "Error fetching attendance data" });
   }
 });
 
-app.post("/attendance/new", async (req, res) => {
-  const { username, date, clockIn, report } = req.body;
+app.post("/attendance/new", verifyToken, async (req, res) => {
+  const { date, clockIn, report } = req.body;
+  
   try {
-    const dayOfWeek = new Date(date).toLocaleString("en-US", { weekday: "long" });
+    console.log("New Attendance Request:", { username: req.user.username, date, clockIn, report });
 
-    const newAttendance = new Interns({
-      name: username,
-      date,
-      IN: clockIn,
-      day: dayOfWeek,
-      report,
-      verification: "pending",
+    // Validate required fields
+    if (!date || !clockIn) {
+      return res.status(400).json({ 
+        message: "Date and clock-in time are required" 
+      });
+    }
+
+    // Validate date format
+    const inputDate = new Date(date);
+    if (isNaN(inputDate.getTime())) {
+      return res.status(400).json({ 
+        message: "Invalid date format" 
+      });
+    }
+
+    // Validate that date is today
+    const today = new Date();
+    if (inputDate.toDateString() !== today.toDateString()) {
+      return res.status(400).json({ 
+        message: "Attendance can only be marked for today" 
+      });
+    }
+
+    // Check if attendance already exists for this date
+    const existingAttendance = await InternModel.findOne({
+      name: req.user.username,
+      date: {
+        $gte: new Date(inputDate.setHours(0, 0, 0, 0)),
+        $lt: new Date(inputDate.setHours(23, 59, 59, 999))
+      }
     });
 
+    if (existingAttendance) {
+      return res.status(400).json({ 
+        message: "Attendance already marked for this date" 
+      });
+    }
+
+    // Create new attendance record
+    const newAttendance = new InternModel({
+      name: req.user.username,
+      date: inputDate,
+      IN: clockIn,
+      day: inputDate.toLocaleString("en-US", { weekday: "long" }),
+      report: report || "No report provided",
+      verification: "pending"
+    });
+
+    // Validate the model
+    const validationError = newAttendance.validateSync();
+    if (validationError) {
+      console.error("Validation Error:", validationError);
+      return res.status(400).json({ 
+        message: "Validation failed", 
+        errors: validationError.errors 
+      });
+    }
+
     await newAttendance.save();
-    res.status(201).json({ message: "Attendance added successfully", attendance: newAttendance });
+    
+    res.status(201).json({ 
+      message: "Attendance added successfully", 
+      attendance: newAttendance 
+    });
+
   } catch (err) {
-    res.status(500).json({ message: "Error adding attendance record" });
+    console.error("Attendance Creation Error:", err);
+    res.status(500).json({ 
+      message: "Error adding attendance record", 
+      error: err.message 
+    });
   }
 });
 
-app.put("/attendance/update", async (req, res) => {
+app.put("/attendance/update", verifyToken, async (req, res) => {
   const { id, clockIn, report, date, verification } = req.body;
   try {
-    const intern = await Interns.findById(id);
+    const intern = await InternModel.findById(id);
     if (!intern) {
       return res.status(404).send("Intern not found");
+    }
+
+    // Only allow users to update their own records unless they're admin
+    if (!req.user.isAdmin && intern.name !== req.user.username) {
+      return res.status(403).json({ message: "Unauthorized to modify this record" });
     }
 
     if (clockIn) intern.IN = clockIn;
     if (report) intern.report = report;
     if (date) intern.date = new Date(date);
-    if (verification) intern.verification = verification;
+    if (verification && req.user.isAdmin) intern.verification = verification;
 
     await intern.save();
     res.send("Record updated successfully");
@@ -158,33 +238,6 @@ app.put("/attendance/update", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
-
-
-app.get("/attendance",  async (req, res) => {
-  const { username } = req.query;
-
-  try {
-    const attendanceRecords = await Interns.find({ name: username }).sort({ date: -1 });
-    res.status(200).json(attendanceRecords);
-  } catch (error) {
-    console.error("Error fetching attendance records:", error);
-    res.status(500).json({ message: "Error fetching attendance records", error });
-  }
-});
-
-// Protected routes - Admin only
-app.get("/getattendance", verifyAdmin, async (req, res) => {
-  try {
-    const attendanceRecords = await Interns.find({}).sort({ date: -1 });
-    res.status(200).json(attendanceRecords);
-  } catch (error) {
-    console.error("Error fetching attendance records:", error);
-    res.status(500).json({ message: "Error fetching attendance records", error });
-  }
-});
-app.get("/",async (req, res) => {
-  res.send("Hello World");
-})
 
 // Start server
 app.listen(PORT, () => {
