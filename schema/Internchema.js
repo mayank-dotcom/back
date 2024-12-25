@@ -10,11 +10,6 @@ const InternSchema = new Schema({
     required: true,
     match: /^([01]\d|2[0-3]):([0-5]\d)$/, // Validates HH:mm format
   },
-  OUT: {
-    type: String,
-    // required: true,
-    match: /^([01]\d|2[0-3]):([0-5]\d)$/, // Validates HH:mm format
-  },
   date: {
     type: Date,
     default: Date.now, // Defaults to the current date
@@ -27,6 +22,10 @@ const InternSchema = new Schema({
   report:{
     type: String,
     default: "No report yet" 
+  },
+  verification:{
+    type: String,
+    default:"pending"
   }
 });
 

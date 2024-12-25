@@ -18,10 +18,10 @@ const sampleData = [
   {
     name: "mayank",
     IN: "02:02",    // Time should be a string
-    OUT: "03:03",   // Time should be a string
     date: "12-24-2024", // Date should be a proper date string
     day: "Tuesday",
     report: "done"
+  
   }
 ];
 

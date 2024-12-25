@@ -108,129 +108,58 @@ app.post("/create-record", async (req, res) => {
 });
 // Protected routes - Regular users
 // Update the clock out endpoint to include report
-app.post("/attendance", async (req, res) => {
-  const { username, action, report } = req.body;  // Add report to destructuring
-
-  const currentDate = new Date();
-  const day = currentDate.toLocaleString("en-US", { weekday: "long" });
-  const time = currentDate.toTimeString().split(" ")[0].slice(0, 5);
-
+app.get("/attendance", async (req, res) => {
+  const { username } = req.query;
   try {
-    if (action === "clockIn") {
-      const attendanceData = {
-        name: username,
-        date: currentDate,
-        day: day,
-        IN: time,
-        report: "" // Initialize empty report
-      };
-
-      const attendanceRecord = new Interns(attendanceData);
-      await attendanceRecord.save();
-      console.log("Clock IN updated:", attendanceRecord);
-
-      return res.status(201).json({ message: "Clock In saved successfully", data: attendanceRecord });
-    } else if (action === "clockOut") {
-      const attendanceRecord = await Interns.findOneAndUpdate(
-        { name: username },
-        { 
-          OUT: time,
-          report: report || "No report submitted" // Add report during clock out
-        },
-        { sort: { _id: -1 }, new: true }
-      );
-
-      if (!attendanceRecord) {
-        console.error("No Clock In record found for this user");
-        return res.status(404).json({ message: "No Clock In record found for this user" });
-      }
-
-      console.log("Clock Out updated successfully:", attendanceRecord);
-      return res.status(200).json({ message: "Clock Out saved successfully", data: attendanceRecord });
-    }
-  } catch (error) {
-    console.error("Error saving attendance:", error);
-    res.status(500).json({ message: "Error saving attendance", error });
-  }
-});
-
-// Update the update endpoint to include report
-app.put("/attendance/update", async (req, res) => {
-  const { id, clockIn, clockOut, date, report } = req.body;
-
-  try {
-    const updates = {};
-    if (clockIn) updates.IN = clockIn;
-    if (clockOut) updates.OUT = clockOut;
-    if (date) updates.date = date;
-    if (report) updates.report = report;
-
-    const updatedRecord = await Interns.findByIdAndUpdate(
-      id,
-      { $set: updates },
-      { new: true }
-    );
-
-    if (!updatedRecord) {
-      return res.status(404).json({ message: "Record not found" });
-    }
-
-    res.status(200).json({ message: "Record updated successfully", data: updatedRecord });
+    const attendanceData = await Interns.find({ name: username }).sort({ date: -1 });
+    res.status(200).json(attendanceData);
   } catch (err) {
-    console.error("Update error:", err);
-    res.status(500).json({ message: "Error updating record" });
+    res.status(500).json({ message: "Error fetching attendance data" });
   }
 });
 
-
-// Update the new attendance endpoint to include report
 app.post("/attendance/new", async (req, res) => {
-  const { username, date, clockIn, clockOut, report } = req.body;  // Add report to destructuring
-
-  // Validate input
-  if (!username || !date || !clockIn || !clockOut) {
-    return res.status(400).json({ 
-      message: "All fields are required", 
-      receivedData: req.body 
-    });
-  }
-
+  const { username, date, clockIn, report } = req.body;
   try {
-    // Parse the date string in mm-dd-yyyy format
-    const [month, day, year] = date.split('-').map(Number);
-    const parsedDate = new Date(year, month - 1, day);
+    const dayOfWeek = new Date(date).toLocaleString("en-US", { weekday: "long" });
 
     const newAttendance = new Interns({
       name: username,
-      date: parsedDate,
-      day: parsedDate.toLocaleString("en-US", { weekday: "long" }),
+      date,
       IN: clockIn,
-      OUT: clockOut,
-      report: report || "No report submitted"  // Add report with default value
+      day: dayOfWeek,
+      report,
+      verification: "pending",
     });
-
-    // Validate the model before saving
-    const validationError = newAttendance.validateSync();
-    if (validationError) {
-      return res.status(400).json({ 
-        message: "Validation failed", 
-        errors: validationError.errors 
-      });
-    }
 
     await newAttendance.save();
-    res.status(201).json({ 
-      message: "New attendance record added successfully", 
-      data: newAttendance 
-    });
-  } catch (error) {
-    console.error("Error adding new attendance record:", error);
-    res.status(500).json({ 
-      message: "Failed to add new attendance record", 
-      error: error.message 
-    });
+    res.status(201).json({ message: "Attendance added successfully", attendance: newAttendance });
+  } catch (err) {
+    res.status(500).json({ message: "Error adding attendance record" });
   }
 });
+
+app.put("/attendance/update", async (req, res) => {
+  const { id, clockIn, report, date, verification } = req.body;
+  try {
+    const intern = await Interns.findById(id);
+    if (!intern) {
+      return res.status(404).send("Intern not found");
+    }
+
+    if (clockIn) intern.IN = clockIn;
+    if (report) intern.report = report;
+    if (date) intern.date = new Date(date);
+    if (verification) intern.verification = verification;
+
+    await intern.save();
+    res.send("Record updated successfully");
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
+});
+
+
 app.get("/attendance",  async (req, res) => {
   const { username } = req.query;
 
