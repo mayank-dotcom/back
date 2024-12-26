@@ -24,10 +24,12 @@ const verifyToken = (req, res, next) => {
     return res.status(403).json({ message: "Invalid token" });
   }
 };
-
+app.use(cors({
+  origin: ['http://localhost:5173', 'https://att-db.onrender.com'], // Replace your-frontend-url with your actual frontend URL
+  credentials: true
+}));
 // Middleware configurations
 app.use(express.json());
-app.use(cors());
 
 // MongoDB connection
 mongoose
