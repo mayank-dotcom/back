@@ -23,6 +23,10 @@ const InternSchema = new Schema({
     type: String,
     default: "No report yet" 
   },
+  verified_report:{
+    type: String,
+    default: "No report yet" 
+  },
   verification:{
     type: String,
     default:"pending"
