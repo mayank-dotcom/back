@@ -161,7 +161,9 @@ app.post("/attendance/new", verifyToken, async (req, res) => {
 
     // Validate that date is today
     const today = new Date();
-    if (inputDate.toDateString() !== today.toDateString()) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (inputDate.toDateString() !== today.toDateString() || inputDate.toDateString() !== yesterday.toDateString()) {
       return res.status(400).json({ 
         message: "Attendance can only be marked for today" 
       });
