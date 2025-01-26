@@ -54,9 +54,37 @@ app.get("/", async (req, res) => {
   res.send("Hello World");
 });
 // New endpoint for bulk upload of attendance
+// Modify your bulk upload route to convert 12-hour time to 24-hour time
 app.post("/attendance/bulk-upload", verifyToken, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "No file uploaded" });
+  }
+
+  // Function to convert 12-hour time to 24-hour time
+  function convertTo24HourFormat(timeString) {
+    // Remove spaces and convert to uppercase
+    timeString = timeString.replace(/\s/g, '').toUpperCase();
+    
+    // Extract hours, minutes, and AM/PM
+    const match = timeString.match(/^(\d{1,2}):(\d{2})(AM|PM)$/);
+    
+    if (!match) {
+      throw new Error(`Invalid time format: ${timeString}`);
+    }
+    
+    let [, hours, minutes, period] = match;
+    hours = parseInt(hours, 10);
+    
+    // Convert to 24-hour format
+    if (period === 'PM' && hours !== 12) {
+      hours += 12;
+    }
+    if (period === 'AM' && hours === 12) {
+      hours = 0;
+    }
+    
+    // Pad with leading zero if needed
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
   }
 
   // Parse the CSV file from memory
@@ -67,7 +95,14 @@ app.post("/attendance/bulk-upload", verifyToken, upload.single('file'), async (r
 
   readStream.pipe(csv())
     .on('data', (data) => {
-      csvResults.push(data); // Collect the parsed CSV data
+      try {
+        // Convert clock-in time to 24-hour format before pushing
+        data.clockIn = convertTo24HourFormat(data.clockIn);
+        csvResults.push(data);
+      } catch (err) {
+        console.error("Error converting time:", err.message);
+        // Optionally, you could collect these errors to return to the user
+      }
     })
     .on('end', async () => {
       // Process CSV data (example: save each row as a new attendance record)
