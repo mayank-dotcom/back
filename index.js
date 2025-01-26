@@ -10,6 +10,13 @@ const { verifyAdmin } = require("./authmiddleware");
 require("dotenv").config();
 const PORT = 8000;
 const { MONGO_URL } = process.env;
+const multer = require('multer');
+const csv = require('csv-parser');
+const stream = require('stream');
+
+// Set up multer with memory storage (no local file storage)
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Middleware for token verification
 const verifyToken = (req, res, next) => {
@@ -46,7 +53,48 @@ mongoose
 app.get("/", async (req, res) => {
   res.send("Hello World");
 });
+// New endpoint for bulk upload of attendance
+app.post("/attendance/bulk-upload", verifyToken, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "No file uploaded" });
+  }
 
+  // Parse the CSV file from memory
+  const csvResults = [];
+  const fileBuffer = req.file.buffer;
+  const readStream = new stream.PassThrough();
+  readStream.end(fileBuffer); // Feed the file buffer to the read stream
+
+  readStream.pipe(csv())
+    .on('data', (data) => {
+      csvResults.push(data); // Collect the parsed CSV data
+    })
+    .on('end', async () => {
+      // Process CSV data (example: save each row as a new attendance record)
+      try {
+        const attendanceRecords = csvResults.map((record) => ({
+          name: record.name,
+          date: new Date(record.date), // Ensure the date is in correct format
+          IN: record.clockIn,
+          day: new Date(record.date).toLocaleString("en-US", { weekday: "long" }),
+          report: record.report || "No report provided",
+          verification: record.verification || "pending",
+        }));
+
+        // Bulk insert attendance records
+        await InternModel.insertMany(attendanceRecords);
+
+        res.status(201).json({ message: "Bulk upload successful", data: attendanceRecords });
+      } catch (err) {
+        console.error("Error processing CSV data:", err);
+        res.status(500).json({ message: "Error processing CSV file", error: err.message });
+      }
+    })
+    .on('error', (err) => {
+      console.error("CSV Parsing Error:", err);
+      res.status(500).json({ message: "Error parsing CSV file", error: err.message });
+    });
+});
 app.delete("/delete-record/:id", verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
