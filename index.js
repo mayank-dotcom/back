@@ -242,7 +242,51 @@ app.put("/attendance/update", verifyToken, async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+//adminats
+// Add this route to the existing server code (in the first document)
+app.post("/attendance/manual-entry", verifyToken, async (req, res) => {
+  const { name, date, clockIn, report } = req.body;
+  
+  // Ensure only admin can make manual entries
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ message: "Unauthorized: Admin access required" });
+  }
 
+  try {
+    // Validate required fields
+    if (!name || !date || !clockIn) {
+      return res.status(400).json({ 
+        message: "Name, date, and clock-in time are required" 
+      });
+    }
+
+    const inputDate = new Date(date);
+    
+    // Create new attendance record
+    const newAttendance = new InternModel({
+      name: name,
+      date: inputDate,
+      IN: clockIn,
+      day: inputDate.toLocaleString("en-US", { weekday: "long" }),
+      report: report || "Manually entered by admin",
+      verification: "verified"
+    });
+
+    await newAttendance.save();
+    
+    res.status(201).json({ 
+      message: "Manual attendance added successfully", 
+      attendance: newAttendance 
+    });
+
+  } catch (err) {
+    console.error("Manual Attendance Creation Error:", err);
+    res.status(500).json({ 
+      message: "Error adding manual attendance record", 
+      error: err.message 
+    });
+  }
+});
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
