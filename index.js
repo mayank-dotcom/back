@@ -161,7 +161,9 @@ app.post("/attendance/new", verifyToken, async (req, res) => {
 
     // Validate that date is today
     const today = new Date();
-    if (inputDate.toDateString() !== today.toDateString()) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (inputDate.toDateString() !== today.toDateString() && inputDate.toDateString() !== yesterday.toDateString()) {
       return res.status(400).json({ 
         message: "Attendance can only be marked for today" 
       });
@@ -219,7 +221,7 @@ app.post("/attendance/new", verifyToken, async (req, res) => {
 });
 
 app.put("/attendance/update", verifyToken, async (req, res) => {
-  const { id, clockIn, report, date, verification } = req.body;
+  const { id, clockIn, report, verified_report, date, verification } = req.body;
   try {
     const intern = await InternModel.findById(id);
     if (!intern) {
@@ -233,6 +235,7 @@ app.put("/attendance/update", verifyToken, async (req, res) => {
 
     if (clockIn) intern.IN = clockIn;
     if (report) intern.report = report;
+    if (verified_report) intern.verified_report = verified_report;
     if (date) intern.date = new Date(date);
     if (verification && req.user.isAdmin) intern.verification = verification;
 
